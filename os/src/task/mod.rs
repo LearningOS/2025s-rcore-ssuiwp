@@ -17,6 +17,7 @@ mod task;
 use crate::config::MAX_APP_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::syscall;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -45,6 +46,8 @@ pub struct TaskManagerInner {
     tasks: [TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
+    syscall_counts: [[usize; syscall::MAX_SYSCALL_ID]; MAX_APP_NUM],
+    // syscall_counts: [usize; syscall::MAX_SYSCALL_ID],
 }
 
 lazy_static! {
@@ -65,8 +68,11 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    syscall_counts: [[0; syscall::MAX_SYSCALL_ID]; MAX_APP_NUM],
+                    // syscall_counts: [0; syscall::MAX_SYSCALL_ID],
                 })
             },
+            
         }
     };
 }
@@ -133,6 +139,31 @@ impl TaskManager {
             // go back to user mode
         } else {
             panic!("All applications completed!");
+        }
+    }
+
+    ///
+    /// 增长 syscall_counts
+    /// 
+    pub fn increment_syscall_count(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        if syscall_id <= syscall::MAX_SYSCALL_ID {
+            inner.syscall_counts[current][syscall_id] += 1;
+            // inner.syscall_counts[syscall_id] += 1;
+        }
+    }
+    ///
+    /// 查询 系统调用次数syscall_count
+    /// 
+    pub fn get_syscall_count(&self, syscall_id: usize) -> isize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        if syscall_id <= syscall::MAX_SYSCALL_ID {
+            inner.syscall_counts[current][syscall_id] as isize
+            // inner.syscall_counts[syscall_id] as isize
+        }else {
+            return -1;
         }
     }
 }
